@@ -49,7 +49,7 @@ def get_page(url):
 
 # === IMAGE HANDLER ===
 def download_image(img_url, referer):
-    """Download image and apply preprocessing for OCR"""
+    """Download and preprocess image for better OCR"""
     try:
         headers = {
             'User-Agent': CONFIG['user_agent'],
@@ -58,25 +58,15 @@ def download_image(img_url, referer):
         res = requests.get(img_url, headers=headers)
         res.raise_for_status()
 
-        # ✅ Only process real images
-        content_type = res.headers.get("Content-Type", "")
-        if not content_type.startswith("image"):
-            print(f"⛔ Skipping non-image: {img_url} ({content_type})")
+        # Skip non-images
+        if not res.headers.get("Content-Type", "").startswith("image"):
+            print(f"⛔ Skipping non-image: {img_url}")
             return None
 
         img = Image.open(BytesIO(res.content))
-
-        # # Convert to grayscale & threshold
-        # img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-        # gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-        # thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-        # denoised = cv2.fastNlMeansDenoising(thresh, None, 30, 7, 21)
-        
-        # Before:
-        img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-
-        # After: handle images with 2, 3, or 4 channels
         img_np = np.array(img)
+
+        # Handle different image channel configs
         if img_np.ndim == 2:
             img_cv = cv2.cvtColor(img_np, cv2.COLOR_GRAY2BGR)
         elif img_np.shape[2] == 4:
@@ -84,11 +74,13 @@ def download_image(img_url, referer):
         else:
             img_cv = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
+        # ✅ Now process and define denoised
+        gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        denoised = cv2.fastNlMeansDenoising(thresh, None, 30, 7, 21)
 
-        # Convert back to PIL
+        # Back to PIL for final enhancement
         img = Image.fromarray(denoised)
-
-        # Enhance contrast & sharpness
         img = ImageEnhance.Contrast(img).enhance(2.0)
         img = ImageEnhance.Sharpness(img).enhance(2.0)
 
@@ -97,6 +89,7 @@ def download_image(img_url, referer):
     except Exception as e:
         print(f"❌ Error processing image {img_url}: {e}")
         return None
+
 
 # === OCR HANDLER ===
 def extract_text_from_image(img):
