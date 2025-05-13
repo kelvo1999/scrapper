@@ -12,6 +12,16 @@ import cv2  # OpenCV for image preprocessing
 import numpy as np  # Array handling
 
 
+def load_known_brands(filepath):
+    """Load known brands from a file into a set"""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return set(line.strip() for line in f if line.strip())
+    except FileNotFoundError:
+        print(f"⚠️ Brand file {filepath} not found. Proceeding without brand matching.")
+        return set()
+
+
 # === CONFIGURATION ===
 CONFIG = {
     'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
@@ -88,56 +98,125 @@ def download_image(img_url, referer):
 def extract_text_from_image(img):
     config = r'--oem 3 --psm 6 -c preserve_interword_spaces=1'
     try:
-        return pytesseract.image_to_string(img, config=config).strip()
+        text = pytesseract.image_to_string(img, config=config).strip()
+        # Apply OCR corrections here
+        ocr_corrections = {
+            '|': 'I',
+            '1': 'I',
+            '0': 'O',
+            'vv': 'W',  # Common OCR mistake
+            # Add more based on your observations
+        }
+        for wrong, right in ocr_corrections.items():
+            text = text.replace(wrong, right)
+        return text
     except Exception as e:
         print(f"❌ OCR failed: {e}")
         return ""
 
-
 # === DATA PARSER ===
-def parse_coupon_data(text, source_url, is_hot_buy=False):
-    brand = re.search(r'^([A-Z][a-zA-Z0-9&]+)', text)
-    description = re.search(r'(?:\n|^)(.+?)(?=\$|\n|$)', text)
-    discount = re.search(r'(\$\d+(?:\.\d{2})?\s*off)', text, re.IGNORECASE)
-    price = re.search(r'(\$\d+\.\d{2})', text)
-    limit = re.search(r'(Limit\s+\d+|While\s+supplies\s+last)', text, re.IGNORECASE)
+def parse_coupon_data(text, source_url, is_hot_buy, known_brands):
+    print(f"\n=== RAW OCR TEXT ===\n{text}\n===================")
+    # Improved splitting that preserves more context
+    # blocks = re.split(r'\n{2,}|\$[0-9]+(?:\.\d{2})?\s*OFF', text)
+    blocks = re.split(r'(?=\$\d+(?:\.\d{2})?\s*OFF)', text)
 
-    if is_hot_buy:
-        period = re.search(r'[A-Za-z]+\s\d{1,2}(st|nd|rd|th)?\s*through\s*[A-Za-z]+\s\d{1,2}(st|nd|rd|th)?', text, re.IGNORECASE)
-        discount_period = period.group(0) if period else "March 29th through April 6th"
-    else:
-        discount_period = "April 9th through May 4th"
+    data = []
+    
+    for block in blocks:
+        lines = [line.strip() for line in block.split('\n') if line.strip()]
+        if not lines:
+            continue
+            
+        # Combine lines to form the full text while preserving structure
+        full_text = ' '.join(lines)
+        
+        if len(full_text) < 10 or re.search(r'BOOK WITH|TRAVEL|PACKAGE|^\W+$', full_text, re.IGNORECASE):
+            continue
 
-    channel = ""
-    if is_hot_buy:
-        if re.search(r'warehouse.*online|online.*warehouse', text, re.IGNORECASE):
-            channel = "In-Warehouse + Online"
-        elif 'warehouse' in text.lower():
-            channel = "In-Warehouse"
-        elif 'online' in text.lower():
-            channel = "Online"
+        # Improved brand detection
+        item_brand = ""
+        for brand in known_brands:
+            # Case-insensitive match of whole words only with word boundaries
+            if re.search(rf'(?<!\w){re.escape(brand.lower())}(?!\w)', full_text.lower()):
+                item_brand = brand
+                break
 
-    return {
-        'scrape_datetime': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
-        'article_name': "Costco April 2025 Hot Buys Coupons" if is_hot_buy else "Costco April 2025 Coupon Book",
-        'publish_date': "2025-03-28 00:00:00" if is_hot_buy else "2025-04-01 00:00:00",
-        'item_brand': brand.group(1) if brand else "",
-        'item_description': description.group(1).strip() if description else "",
-        'discount': discount.group(1) if discount else "",
-        'discount_cleaned': re.sub(r'[^\d.]', '', discount.group(1)) if discount else "",
-        'count_limit': limit.group(0) if limit else "",
-        'channel': channel,
-        'discount_period': discount_period,
-        'item_original_price': price.group(1) if price else "",
-        'source_url': source_url
-    }
+        # Fallback brand detection if no known brand found
+        if not item_brand:
+            # Look for ALL CAPS brand names (common in coupons)
+            brand_match = re.search(
+                r'^([A-Z][A-Z&\-\s]+[A-Z])(?=\s|$)|^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+                full_text
+            )
+            if brand_match:
+                item_brand = (brand_match.group(1) or brand_match.group(2)).strip()
+            else:
+                # Take first few words as brand if no clear pattern
+                item_brand = ' '.join(full_text.split()[:2]).strip()
 
+        # Improved description cleaning
+        item_description = full_text.strip()
+        
+        # Remove brand from description if it appears at start (with fuzzy matching)
+        if item_brand:
+            brand_regex = re.escape(item_brand)
+            if re.search(rf'^{brand_regex}[,\s\-]*', item_description, re.IGNORECASE):
+                item_description = re.sub(rf'^{brand_regex}[,\s\-]*', '', item_description, flags=re.IGNORECASE).strip()
+        
+        # Additional cleaning
+        item_description = re.sub(r'\s+', ' ', item_description)
+        item_description = re.sub(r'^[^a-zA-Z0-9]+', '', item_description)  # Remove leading special chars
+        item_description = re.sub(r'[\*•\-]+$', '', item_description)  # Remove trailing special chars
+
+        # Price and discount extraction
+        discount_match = re.search(r'\$[0-9]+(?:\.\d{2})?\s*OFF', text, re.IGNORECASE)
+        discount = discount_match.group(0) if discount_match else ""
+        discount_cleaned = re.sub(r'[^\d.]', '', discount) if discount else ""
+        
+        limit = re.search(r'(Limit\s+\d+|While\s+supplies\s+last)', text, re.IGNORECASE)
+        price = re.search(r'\$[0-9]+\.\d{2}', text)
+
+        channel = ""
+        if is_hot_buy:
+            warehouse = 'warehouse' in text.lower()
+            online = 'online' in text.lower()
+            if warehouse and online:
+                channel = "In-Warehouse + Online"
+            elif warehouse:
+                channel = "In-Warehouse"
+            elif online:
+                channel = "Online"
+
+        discount_period = "March 29th through April 6th" if is_hot_buy else "April 9th through May 4th"
+
+        row = {
+            'scrape_datetime': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
+            'article_name': "Costco April 2025 Hot Buys Coupons" if is_hot_buy else "Costco April 2025 Coupon Book",
+            'publish_date': "2025-03-28 00:00:00" if is_hot_buy else "2025-04-01 00:00:00",
+            'item_brand': item_brand,
+            'item_description': item_description,
+            'discount': discount,
+            'discount_cleaned': discount_cleaned,
+            'count_limit': limit.group(0) if limit else "",
+            'channel': channel,
+            'discount_period': discount_period,
+            'item_original_price': price.group(0) if price else "",
+            'source_url': source_url
+        }
+
+        data.append(row)
+
+    return data
 
 # === SCRAPER CORE ===
 def scrape_images_from_page(url, is_hot_buy=False):
     html = get_page(url)
     if not html:
         return []
+
+    brand_file = 'hot_buy_brands.txt' if is_hot_buy else 'coupon_book_brands.txt'
+    known_brands = load_known_brands(brand_file)
 
     soup = BeautifulSoup(html, 'html.parser')
     items = []
@@ -171,8 +250,9 @@ def scrape_images_from_page(url, is_hot_buy=False):
         if not text:
             continue
 
-        item = parse_coupon_data(text, img_url, is_hot_buy)
-        items.append(item)
+        parsed = parse_coupon_data(text, img_url, is_hot_buy, known_brands)
+        if isinstance(parsed, list):
+            items.extend(parsed)
 
     if is_hot_buy:
         next_page = soup.find('a', string=re.compile(r'next|›|>', re.IGNORECASE))
