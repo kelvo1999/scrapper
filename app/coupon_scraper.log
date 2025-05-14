@@ -1,0 +1,27 @@
+2025-05-14 13:05:17,135 - INFO - Tesseract OCR 5.5.0.20241111 initialized successfully
+2025-05-14 13:05:17,135 - INFO - Scraping current coupon book: Costco May 2025 Coupon Book
+2025-05-14 13:05:20,709 - WARNING - Attempt 1/3 failed for https://www.costcoinsider.com/costco-may-2025-coupon-book/: 404 Client Error: Not Found for url: https://www.costcoinsider.com/costco-may-2025-coupon-book/
+2025-05-14 13:05:23,335 - WARNING - Attempt 2/3 failed for https://www.costcoinsider.com/costco-may-2025-coupon-book/: 404 Client Error: Not Found for url: https://www.costcoinsider.com/costco-may-2025-coupon-book/
+2025-05-14 13:05:27,126 - WARNING - Attempt 3/3 failed for https://www.costcoinsider.com/costco-may-2025-coupon-book/: 404 Client Error: Not Found for url: https://www.costcoinsider.com/costco-may-2025-coupon-book/
+2025-05-14 13:05:27,135 - ERROR - Failed to fetch https://www.costcoinsider.com/costco-may-2025-coupon-book/ after 3 attempts
+2025-05-14 13:05:27,135 - INFO - Scraping current hot buys: Costco May 2025 Hot Buys
+2025-05-14 13:05:29,266 - INFO - Found 10 images on https://www.costcoinsider.com/costco-may-2025-hot-buys-coupons/
+2025-05-14 13:05:29,266 - INFO - Processing image: https://www.costcoinsider.com/wp-content/themes/Selin5.4/images/Costco-Insider4.png
+2025-05-14 13:05:29,545 - WARNING - Skipping image with insufficient text: https://www.costcoinsider.com/wp-content/themes/Selin5.4/images/Costco-Insider4.png
+2025-05-14 13:05:29,545 - INFO - Processing image: https://www.costcoinsider.com/wp-content/themes/Selin5.4/images/date.png
+2025-05-14 13:05:29,749 - WARNING - Skipping image with insufficient text: https://www.costcoinsider.com/wp-content/themes/Selin5.4/images/date.png
+2025-05-14 13:05:29,749 - INFO - Processing image: https://www.costcoinsider.com/wp-content/themes/Selin5.4/images/user.png
+2025-05-14 13:05:29,955 - WARNING - Skipping image with insufficient text: https://www.costcoinsider.com/wp-content/themes/Selin5.4/images/user.png
+2025-05-14 13:05:29,955 - INFO - Processing image: https://www.costcoinsider.com/wp-content/uploads/2025/04/Costco-May-2025-Hot-Buys-Coupons-Cover.jpg
+2025-05-14 13:05:31,335 - INFO - Processing image: https://www.costcoinsider.com/wp-content/uploads/2025/04/Costco-May-2025-Hot-Buys-Coupons-Page-1-635x335.jpg
+2025-05-14 13:05:31,725 - INFO - Processing image: https://www.costcoinsider.com/wp-content/uploads/2025/04/Costco-May-2025-Hot-Buys-Coupons-Page-2-635x337.jpg
+2025-05-14 13:05:32,215 - INFO - Processing image: https://www.costcoinsider.com/wp-content/uploads/2025/04/Costco-May-2025-Hot-Buys-Coupons-Page-3-635x246.jpg
+2025-05-14 13:05:33,316 - INFO - Processing image: https://www.costcoinsider.com/wp-content/themes/Selin5.4/images/folder.png
+2025-05-14 13:05:33,485 - WARNING - Skipping image with insufficient text: https://www.costcoinsider.com/wp-content/themes/Selin5.4/images/folder.png
+2025-05-14 13:05:33,485 - INFO - Processing image: https://www.costcoinsider.com/wp-content/themes/Selin5.4/images/tag.png
+2025-05-14 13:05:33,725 - WARNING - Skipping image with insufficient text: https://www.costcoinsider.com/wp-content/themes/Selin5.4/images/tag.png
+2025-05-14 13:05:33,725 - INFO - Processing image: https://www.facebook.com/tr?id=182975522258099&ev=PageView&noscript=1&cd%5Bpost_category%5D=Coupons%2C+Featured&cd%5Bpage_title%5D=Costco+May+2025+Hot+Buys+Coupons&cd%5Bpost_type%5D=post&cd%5Bpost_id%5D=101121&cd%5Bplugin%5D=PixelYourSite&cd%5Buser_role%5D=guest&cd%5Bevent_url%5D=www.costcoinsider.com%2Fcostco-may-2025-hot-buys-coupons%2F
+2025-05-14 13:05:33,915 - WARNING - Skipping non-image content at https://www.facebook.com/tr?id=182975522258099&ev=PageView&noscript=1&cd%5Bpost_category%5D=Coupons%2C+Featured&cd%5Bpage_title%5D=Costco+May+2025+Hot+Buys+Coupons&cd%5Bpost_type%5D=post&cd%5Bpost_id%5D=101121&cd%5Bplugin%5D=PixelYourSite&cd%5Buser_role%5D=guest&cd%5Bevent_url%5D=www.costcoinsider.com%2Fcostco-may-2025-hot-buys-coupons%2F
+2025-05-14 13:05:33,918 - WARNING - No data to save for costco_current_coupons_2025-05-14.xlsx
+2025-05-14 13:05:34,182 - INFO - Successfully saved 4 records to costco_current_hot_buys_2025-05-14.xlsx
+2025-05-14 13:05:34,182 - INFO - Scraping completed successfully

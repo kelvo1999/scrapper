@@ -99,13 +99,11 @@ def extract_text_from_image(img):
     config = r'--oem 3 --psm 6 -c preserve_interword_spaces=1'
     try:
         text = pytesseract.image_to_string(img, config=config).strip()
-        # Apply OCR corrections here
         ocr_corrections = {
             '|': 'I',
             '1': 'I',
             '0': 'O',
-            'vv': 'W',  # Common OCR mistake
-            # Added  based on my observations
+            'vv': 'W',
         }
         for wrong, right in ocr_corrections.items():
             text = text.replace(wrong, right)
@@ -114,66 +112,51 @@ def extract_text_from_image(img):
         print(f"❌ OCR failed: {e}")
         return ""
 
+
 # === DATA PARSER ===
 def parse_coupon_data(text, source_url, is_hot_buy, known_brands):
-    print(f"\n=== RAW OCR TEXT ===\n{text}\n===================")
-    # Improved splitting that preserves more context
-    # blocks = re.split(r'\n{2,}|\$[0-9]+(?:\.\d{2})?\s*OFF', text)
     blocks = re.split(r'(?=\$\d+(?:\.\d{2})?\s*OFF)', text)
-
     data = []
-    
+
     for block in blocks:
         lines = [line.strip() for line in block.split('\n') if line.strip()]
         if not lines:
             continue
-            
-        # Combine lines to form the full text while preserving structure
+
         full_text = ' '.join(lines)
-        
+
         if len(full_text) < 10 or re.search(r'BOOK WITH|TRAVEL|PACKAGE|^\W+$', full_text, re.IGNORECASE):
             continue
 
-        # Improved brand detection
         item_brand = ""
         for brand in known_brands:
-            # Case-insensitive match of whole words only with word boundaries
             if re.search(rf'(?<!\w){re.escape(brand.lower())}(?!\w)', full_text.lower()):
                 item_brand = brand
                 break
 
-        # Fallback brand detection if no known brand found
         if not item_brand:
-            # Look for ALL CAPS brand names (common in coupons)
-            brand_match = re.search(
-                r'^([A-Z][A-Z&\-\s]+[A-Z])(?=\s|$)|^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
-                full_text
-            )
+            brand_match = re.search(r'^([A-Z][A-Z&\-\s]+[A-Z])(?=\s|$)|^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)', full_text)
             if brand_match:
                 item_brand = (brand_match.group(1) or brand_match.group(2)).strip()
             else:
-                # Take first few words as brand if no clear pattern
                 item_brand = ' '.join(full_text.split()[:2]).strip()
 
-        # Improved description cleaning
         item_description = full_text.strip()
-        
-        # Remove brand from description if it appears at start (with fuzzy matching)
-        if item_brand:
-            brand_regex = re.escape(item_brand)
-            if re.search(rf'^{brand_regex}[,\s\-]*', item_description, re.IGNORECASE):
-                item_description = re.sub(rf'^{brand_regex}[,\s\-]*', '', item_description, flags=re.IGNORECASE).strip()
-        
-        # Additional cleaning
-        item_description = re.sub(r'\s+', ' ', item_description)
-        item_description = re.sub(r'^[^a-zA-Z0-9]+', '', item_description)  # Remove leading special chars
-        item_description = re.sub(r'[\*•\-]+$', '', item_description)  # Remove trailing special chars
 
-        # Price and discount extraction
+        if item_brand:
+            brand_tokens = item_brand.lower().split()
+            desc_tokens = item_description.split()
+            filtered = [token for token in desc_tokens if token.lower() not in brand_tokens]
+            item_description = ' '.join(filtered).strip()
+
+        item_description = re.sub(r'\s+', ' ', item_description)
+        item_description = re.sub(r'^[^a-zA-Z0-9]+', '', item_description)
+        item_description = re.sub(r'[\*•\-]+$', '', item_description)
+
         discount_match = re.search(r'\$[0-9]+(?:\.\d{2})?\s*OFF', text, re.IGNORECASE)
         discount = discount_match.group(0) if discount_match else ""
         discount_cleaned = re.sub(r'[^\d.]', '', discount) if discount else ""
-        
+
         limit = re.search(r'(Limit\s+\d+|While\s+supplies\s+last)', text, re.IGNORECASE)
         price = re.search(r'\$[0-9]+\.\d{2}', text)
 
@@ -208,6 +191,7 @@ def parse_coupon_data(text, source_url, is_hot_buy, known_brands):
         data.append(row)
 
     return data
+
 
 # === SCRAPER CORE ===
 def scrape_images_from_page(url, is_hot_buy=False):
