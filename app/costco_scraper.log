@@ -1,0 +1,15 @@
+2025-05-15 10:22:10,905 - INFO - Starting Costco coupon scraper
+2025-05-15 10:22:10,905 - ERROR - Tesseract init error: C:\Program Files\Tesseract-OCR\tesseract.exe is not installed or it's not in your PATH. See README file for more information.
+2025-05-15 10:22:10,905 - ERROR - Failed to initialize Tesseract OCR. Exiting.
+2025-05-15 10:22:52,752 - INFO - Starting Costco coupon scraper
+2025-05-15 10:22:52,839 - INFO - Tesseract initialized (v5.5.0.20241111)
+2025-05-15 10:22:52,839 - INFO - Finding coupon post links...
+2025-05-15 10:22:55,812 - ERROR - No valid post links found. Exiting.
+2025-05-15 10:31:14,284 - INFO - Starting Costco coupon scraper
+2025-05-15 10:31:14,321 - INFO - Tesseract initialized (v5.5.0.20241111)
+2025-05-15 10:31:14,321 - INFO - Finding coupon post links...
+2025-05-15 10:31:15,814 - ERROR - No valid post links found. Exiting.
+2025-05-15 10:35:45,555 - INFO - Starting Costco coupon scraper
+2025-05-15 10:35:45,582 - INFO - Tesseract initialized (v5.5.0.20241111)
+2025-05-15 10:35:45,582 - INFO - Finding coupon post links...
+2025-05-15 10:35:47,515 - ERROR - No valid post links found. Exiting.

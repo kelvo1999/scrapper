@@ -94,6 +94,7 @@ def extract_text_from_image(img):
             '1': 'I',
             '0': 'O',
             'vv': 'W',
+            '$':'S',
         }
         for wrong, right in ocr_corrections.items():
             text = text.replace(wrong, right)
