@@ -10,7 +10,8 @@ from urllib.parse import urljoin
 import time
 import cv2
 import numpy as np
-from rapidfuzz import process  # <-- NEW
+from rapidfuzz import process
+import os
 
 # === CONFIGURATION ===
 CONFIG = {
@@ -25,43 +26,35 @@ CONFIG = {
         'SunVilla', 'Charmin', 'Yardistry', 'Dyson Cyclone', 'Pistachios', 'Primavera Mistura',
         'Apples', 'Palmiers', 'Waterloo', 'Woozoo', 'Mower', 'Trimmer', 'Jet Blower',
         'Scotts', 'Huggies', 'Powder', 'Cookie', 'Kerrygold', 'Prawn Hacao'
-        }
+    },
+    'blacklist_keywords': ['warehouse', 'online', 'only', 'in-warehouse', 'in warehouse']
 }
 
+# === HELPERS ===
+def clean_text(text):
+    return re.sub(r'\s+', ' ', text.strip())
+
+def remove_blacklisted_words(text):
+    pattern = re.compile(r'\b(?:' + '|'.join(map(re.escape, CONFIG['blacklist_keywords'])) + r')\b', flags=re.IGNORECASE)
+    return pattern.sub('', text)
+
+def fuzzy_find_brand(ocr_text, known_brands):
+    if known_brands:
+        match = process.extractOne(ocr_text, known_brands, score_cutoff=80)
+        if match:
+            return match[0]
+    return None
+
 def load_known_brands(filepath):
-    """Load known brands from a file into a set, fallback to default brands if file missing."""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             brands = set(line.strip() for line in f if line.strip())
-            if brands:
-                return brands
-            else:
-                print(f"⚠️ Brand file {filepath} is empty. Using default brands.")
-                return CONFIG['default_brands']
+            return brands if brands else CONFIG['default_brands']
     except FileNotFoundError:
         print(f"⚠️ Brand file {filepath} not found. Using default brands.")
         return CONFIG['default_brands']
 
-def initialize():
-    try:
-        pytesseract.pytesseract.tesseract_cmd = CONFIG['tesseract_path']
-        pytesseract.get_tesseract_version()
-        return True
-    except Exception as e:
-        print(f"❌ Tesseract init error: {e}")
-        return False
-
-def get_page(url):
-    try:
-        time.sleep(CONFIG['delay'])
-        headers = {'User-Agent': CONFIG['user_agent']}
-        res = requests.get(url, headers=headers)
-        res.raise_for_status()
-        return res.text
-    except Exception as e:
-        print(f"❌ Failed to fetch {url}: {e}")
-        return None
-
+# === IMAGE & TEXT PROCESSING ===
 def download_image(img_url, referer):
     try:
         headers = {'User-Agent': CONFIG['user_agent'], 'Referer': referer}
@@ -93,93 +86,69 @@ def extract_text_from_image(img):
     config = r'--oem 3 --psm 6 -c preserve_interword_spaces=1'
     try:
         text = pytesseract.image_to_string(img, config=config).strip()
-        ocr_corrections = {
-            '|': 'I',
-            '1': 'I',
-            '0': 'O',
-            'vv': 'W',
-            '$':'S',
-        }
-        for wrong, right in ocr_corrections.items():
+        for wrong, right in {'|': 'I', '1': 'I', '0': 'O', 'vv': 'W', '$': 'S'}.items():
             text = text.replace(wrong, right)
         return text
     except Exception as e:
         print(f"❌ OCR failed: {e}")
         return ""
 
-def fuzzy_find_brand(ocr_text, known_brands):
-    """Fuzzy match OCR output to known brands."""
-    match = None
-    score = 0
-    # Only try if there are known brands
-    if known_brands:
-        match_tuple = process.extractOne(ocr_text, known_brands, score_cutoff=80)
-        if match_tuple:
-            match, score, _ = match_tuple
-    return match
-
+# === DATA PARSING ===
 def parse_coupon_data(text, source_url, is_hot_buy, known_brands):
     blocks = re.split(r'(?=\$\d+(?:\.\d{2})?\s*OFF)', text)
     data = []
 
     for block in blocks:
-        lines = [line.strip() for line in block.split('\n') if line.strip()]
-        if not lines:
+        if len(block.strip()) < 10:
             continue
+        full_text = re.sub(r'\s+', ' ', block.strip())
 
-        full_text = ' '.join(lines)
+        clean_block = remove_blacklisted_words(full_text)
 
-        if len(full_text) < 10 or re.search(r'BOOK WITH|TRAVEL|PACKAGE|^\W+$', full_text, re.IGNORECASE):
-            continue
-
-        # --- Brand Extraction ---
+        # === Brand Detection ===
         item_brand = ""
-        # 1. Exact match in known brands
         for brand in known_brands:
-            if re.search(rf'(?<!\w){re.escape(brand.lower())}(?!\w)', full_text.lower()):
+            if re.search(rf'\b{re.escape(brand.lower())}\b', clean_block.lower()):
                 item_brand = brand
                 break
-        # 2. Fuzzy match on first 2-3 words if not found
         if not item_brand:
-            possible_brand = ' '.join(full_text.split()[:3])
-            fuzzy_brand = fuzzy_find_brand(possible_brand, known_brands)
-            if fuzzy_brand:
-                item_brand = fuzzy_brand
-            else:
-                # 3. Fallback: capitalized sequence at start
-                brand_match = re.match(r'^([A-Z][a-zA-Z0-9&\-\']+)', full_text)
-                if brand_match:
-                    item_brand = brand_match.group(1)
+            possible = ' '.join(full_text.split()[:3])
+            fuzzy = fuzzy_find_brand(possible, known_brands)
+            if fuzzy:
+                item_brand = fuzzy
 
-        # --- Description Extraction ---
-        item_description = full_text.strip()
+        # === Description ===
+        item_description = full_text
         if item_brand:
-            # Remove brand from description (case-insensitive, only at start)
             pattern = re.compile(rf'^{re.escape(item_brand)}[\s:,-]*', re.IGNORECASE)
-            item_description = pattern.sub('', item_description).strip()
-        # Remove leading/trailing non-alphanumerics and normalize whitespace
-        item_description = re.sub(r'^[^a-zA-Z0-9]+', '', item_description)
-        item_description = re.sub(r'[^a-zA-Z0-9]+$', '', item_description)
-        item_description = re.sub(r'\s+', ' ', item_description)
+            item_description = pattern.sub('', item_description)
+        item_description = remove_blacklisted_words(item_description)
+        item_description = re.sub(r'[^\w\s]', '', item_description).strip()
 
-        # --- Discount, Limit, Price, Channel Extraction ---
-        discount_match = re.search(r'\$[0-9]+(?:\.\d{2})?\s*OFF', text, re.IGNORECASE)
-        discount = discount_match.group(0) if discount_match else ""
+        # === Discount ===
+        discount_match = re.search(r'\$\s*\d+(?:\.\d{2})?\s*OFF', block, re.IGNORECASE)
+        discount = discount_match.group(0).strip() if discount_match else ""
         discount_cleaned = re.sub(r'[^\d.]', '', discount) if discount else ""
-        limit = re.search(r'(Limit\s+\d+|While\s+supplies\s+last)', text, re.IGNORECASE)
-        price = re.search(r'\$[0-9]+\.\d{2}', text)
+
+        # === Limit ===
+        limit_match = re.search(r'(Limit\s+\d+|While\s+supplies\s+last)', block, re.IGNORECASE)
+        count_limit = limit_match.group(0).strip() if limit_match else ""
+
+        # === Price ===
+        price_match = re.search(r'\$\s*\d+\.\d{2}', block)
+        item_original_price = price_match.group(0).strip() if price_match else ""
+
+        # === Channel ===
         channel = ""
-        if is_hot_buy:
-            warehouse = 'warehouse' in text.lower()
-            online = 'online' in text.lower()
-            if warehouse and online:
-                channel = "In-Warehouse + Online"
-            elif warehouse:
-                channel = "In-Warehouse"
-            elif online:
-                channel = "Online"
-        discount_period = "March 29th through April 6th" if is_hot_buy else "April 9th through May 4th"
-        row = {
+        b = block.lower()
+        if 'warehouse' in b and 'online' in b:
+            channel = "In-Warehouse + Online"
+        elif 'warehouse' in b:
+            channel = "In-Warehouse"
+        elif 'online' in b:
+            channel = "Online"
+
+        data.append({
             'scrape_datetime': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
             'article_name': "Costco April 2025 Hot Buys Coupons" if is_hot_buy else "Costco April 2025 Coupon Book",
             'publish_date': "2025-03-28 00:00:00" if is_hot_buy else "2025-04-01 00:00:00",
@@ -187,14 +156,25 @@ def parse_coupon_data(text, source_url, is_hot_buy, known_brands):
             'item_description': item_description,
             'discount': discount,
             'discount_cleaned': discount_cleaned,
-            'count_limit': limit.group(0) if limit else "",
+            'count_limit': count_limit,
             'channel': channel,
-            'discount_period': discount_period,
-            'item_original_price': price.group(0) if price else "",
+            'discount_period': "March 29th through April 6th" if is_hot_buy else "April 9th through May 4th",
+            'item_original_price': item_original_price,
             'source_url': source_url
-        }
-        data.append(row)
+        })
     return data
+
+# === SCRAPER LOGIC ===
+def get_page(url):
+    try:
+        time.sleep(CONFIG['delay'])
+        headers = {'User-Agent': CONFIG['user_agent']}
+        res = requests.get(url, headers=headers)
+        res.raise_for_status()
+        return res.text
+    except Exception as e:
+        print(f"❌ Failed to fetch {url}: {e}")
+        return None
 
 def scrape_images_from_page(url, is_hot_buy=False):
     html = get_page(url)
@@ -203,21 +183,15 @@ def scrape_images_from_page(url, is_hot_buy=False):
     brand_file = 'hot_buy_brands.txt' if is_hot_buy else 'coupon_book_brands.txt'
     known_brands = load_known_brands(brand_file)
     soup = BeautifulSoup(html, 'html.parser')
+    selectors = CONFIG['image_selectors']['hot_buy'] if is_hot_buy else CONFIG['image_selectors']['coupon']
+    images = []
+    for selector in selectors:
+        images = soup.select(selector)
+        if images:
+            break
+    if not images:
+        images = soup.select('img')
     items = []
-    if not is_hot_buy:
-        coupon_container = soup.select_one('#coupon-book')
-        images = coupon_container.select('img') if coupon_container else []
-        print(f"📦 Found {len(images)} coupon book images in #coupon-book")
-    else:
-        selectors = CONFIG['image_selectors']['hot_buy']
-        images = []
-        for selector in selectors:
-            images = soup.select(selector)
-            if images:
-                break
-        else:
-            images = soup.select('img')
-        print(f"📦 Found {len(images)} hot buy images")
     for img_tag in images:
         img_url = img_tag.get('src')
         if not img_url.startswith('http'):
@@ -232,12 +206,7 @@ def scrape_images_from_page(url, is_hot_buy=False):
         parsed = parse_coupon_data(text, img_url, is_hot_buy, known_brands)
         if isinstance(parsed, list):
             items.extend(parsed)
-    if is_hot_buy:
-        next_page = soup.find('a', string=re.compile(r'next|›|>', re.IGNORECASE))
-        if next_page and next_page.get('href'):
-            next_url = urljoin(url, next_page['href'])
-            print(f"➡️ Following next page: {next_url}")
-            items.extend(scrape_images_from_page(next_url, is_hot_buy))
+    save_to_excel(items, f"{'Hot_Buys' if is_hot_buy else 'Coupon_Books'}_{datetime.now().strftime('%Y-%m-%d')}.xlsx")
     return items
 
 def save_to_excel(data, filename):
@@ -245,26 +214,30 @@ def save_to_excel(data, filename):
         print(f"⚠️ No data to save for {filename}")
         return
     df = pd.DataFrame(data)
-    columns = [
+    df = df[[
         'scrape_datetime', 'article_name', 'publish_date', 'item_brand',
         'item_description', 'discount', 'discount_cleaned', 'count_limit',
         'channel', 'discount_period', 'item_original_price', 'source_url'
-    ]
-    df = df[columns]
+    ]]
     df.to_excel(filename, index=False)
     print(f"💾 Saved {len(df)} records to {filename}")
+
+def initialize():
+    try:
+        pytesseract.pytesseract.tesseract_cmd = CONFIG['tesseract_path']
+        pytesseract.get_tesseract_version()
+        return True
+    except Exception as e:
+        print(f"❌ Tesseract init error: {e}")
+        return False
 
 def main():
     if not initialize():
         return
     print("📘 Scraping Coupon Book...")
-    coupon_url = "https://www.costcoinsider.com/costco-april-2025-coupon-book/"
-    coupons = scrape_images_from_page(coupon_url, is_hot_buy=False)
-    save_to_excel(coupons, "2025-04-28_Coupon_Books.xlsx")
+    scrape_images_from_page("https://www.costcoinsider.com/costco-april-2025-coupon-book/", is_hot_buy=False)
     print("🔥 Scraping Hot Buys...")
-    hot_buys_url = "https://www.costcoinsider.com/costco-april-2025-hot-buys-coupons/"
-    hotbuys = scrape_images_from_page(hot_buys_url, is_hot_buy=True)
-    save_to_excel(hotbuys, "2025-04-28_Hot_Buys_Coupons.xlsx")
+    scrape_images_from_page("https://www.costcoinsider.com/costco-april-2025-hot-buys-coupons/", is_hot_buy=True)
     print("🎉 Done! Check the Excel files.")
 
 if __name__ == "__main__":

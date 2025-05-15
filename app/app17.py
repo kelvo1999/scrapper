@@ -1,3 +1,6 @@
+# --- your previous code remains unchanged above this line ---
+
+# ✅ Append this section to the bottom of the script
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -240,6 +243,22 @@ def scrape_images_from_page(url, is_hot_buy=False):
             items.extend(scrape_images_from_page(next_url, is_hot_buy))
     return items
 
+def loop_back_years(years_back=2):
+    current_year = datetime.now().year
+    for y in range(current_year - years_back, current_year + 1):
+        for month in ['april', 'march', 'february', 'january']:
+            print(f"\n📅 Scraping for {month.title()} {y}...")
+            coupon_url = f"https://www.costcoinsider.com/costco-{month}-{y}-coupon-book/"
+            hotbuy_url = f"https://www.costcoinsider.com/costco-{month}-{y}-hot-buys-coupons/"
+            
+            coupons = scrape_images_from_page(coupon_url, is_hot_buy=False)
+            hotbuys = scrape_images_from_page(hotbuy_url, is_hot_buy=True)
+
+            if coupons:
+                save_to_excel(coupons, f"{y}_{month}_Coupon_Book.xlsx")
+            if hotbuys:
+                save_to_excel(hotbuys, f"{y}_{month}_Hot_Buys.xlsx")
+
 def save_to_excel(data, filename):
     if not data:
         print(f"⚠️ No data to save for {filename}")
@@ -254,6 +273,13 @@ def save_to_excel(data, filename):
     df.to_excel(filename, index=False)
     print(f"💾 Saved {len(df)} records to {filename}")
 
+# def main():
+#     if not initialize():
+#         return
+#     loop_back_years(2)
+
+# if __name__ == "__main__":
+#     main()
 def main():
     if not initialize():
         return
