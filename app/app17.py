@@ -1,6 +1,3 @@
-# --- your previous code remains unchanged above this line ---
-
-# ✅ Append this section to the bottom of the script
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -13,7 +10,7 @@ from urllib.parse import urljoin
 import time
 import cv2
 import numpy as np
-from rapidfuzz import process  # <-- NEW
+from rapidfuzz import process
 
 # === CONFIGURATION ===
 CONFIG = {
@@ -28,22 +25,19 @@ CONFIG = {
         'SunVilla', 'Charmin', 'Yardistry', 'Dyson Cyclone', 'Pistachios', 'Primavera Mistura',
         'Apples', 'Palmiers', 'Waterloo', 'Woozoo', 'Mower', 'Trimmer', 'Jet Blower',
         'Scotts', 'Huggies', 'Powder', 'Cookie', 'Kerrygold', 'Prawn Hacao'
-        }
+    }
 }
 
 def load_known_brands(filepath):
-    """Load known brands from a file into a set, fallback to default brands if file missing."""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             brands = set(line.strip() for line in f if line.strip())
             if brands:
                 return brands
-            else:
-                print(f"⚠️ Brand file {filepath} is empty. Using default brands.")
-                return CONFIG['default_brands']
+        print(f"⚠️ Brand file {filepath} is empty. Using default brands.")
     except FileNotFoundError:
         print(f"⚠️ Brand file {filepath} not found. Using default brands.")
-        return CONFIG['default_brands']
+    return CONFIG['default_brands']
 
 def initialize():
     try:
@@ -97,11 +91,7 @@ def extract_text_from_image(img):
     try:
         text = pytesseract.image_to_string(img, config=config).strip()
         ocr_corrections = {
-            '|': 'I',
-            '1': 'I',
-            '0': 'O',
-            'vv': 'W',
-            '$':'S',
+            '|': 'I', '1': 'I', '0': 'O', 'vv': 'W', '$': 'S',
         }
         for wrong, right in ocr_corrections.items():
             text = text.replace(wrong, right)
@@ -111,10 +101,8 @@ def extract_text_from_image(img):
         return ""
 
 def fuzzy_find_brand(ocr_text, known_brands):
-    """Fuzzy match OCR output to known brands."""
     match = None
     score = 0
-    # Only try if there are known brands
     if known_brands:
         match_tuple = process.extractOne(ocr_text, known_brands, score_cutoff=80)
         if match_tuple:
@@ -135,42 +123,36 @@ def parse_coupon_data(text, source_url, is_hot_buy, known_brands):
         if len(full_text) < 10 or re.search(r'BOOK WITH|TRAVEL|PACKAGE|^\W+$', full_text, re.IGNORECASE):
             continue
 
-        # --- Brand Extraction ---
         item_brand = ""
-        # 1. Exact match in known brands
         for brand in known_brands:
             if re.search(rf'(?<!\w){re.escape(brand.lower())}(?!\w)', full_text.lower()):
                 item_brand = brand
                 break
-        # 2. Fuzzy match on first 2-3 words if not found
+
         if not item_brand:
             possible_brand = ' '.join(full_text.split()[:3])
             fuzzy_brand = fuzzy_find_brand(possible_brand, known_brands)
             if fuzzy_brand:
                 item_brand = fuzzy_brand
             else:
-                # 3. Fallback: capitalized sequence at start
                 brand_match = re.match(r'^([A-Z][a-zA-Z0-9&\-\']+)', full_text)
                 if brand_match:
                     item_brand = brand_match.group(1)
 
-        # --- Description Extraction ---
         item_description = full_text.strip()
         if item_brand:
-            # Remove brand from description (case-insensitive, only at start)
             pattern = re.compile(rf'^{re.escape(item_brand)}[\s:,-]*', re.IGNORECASE)
             item_description = pattern.sub('', item_description).strip()
-        # Remove leading/trailing non-alphanumerics and normalize whitespace
         item_description = re.sub(r'^[^a-zA-Z0-9]+', '', item_description)
         item_description = re.sub(r'[^a-zA-Z0-9]+$', '', item_description)
         item_description = re.sub(r'\s+', ' ', item_description)
 
-        # --- Discount, Limit, Price, Channel Extraction ---
         discount_match = re.search(r'\$[0-9]+(?:\.\d{2})?\s*OFF', text, re.IGNORECASE)
         discount = discount_match.group(0) if discount_match else ""
         discount_cleaned = re.sub(r'[^\d.]', '', discount) if discount else ""
         limit = re.search(r'(Limit\s+\d+|While\s+supplies\s+last)', text, re.IGNORECASE)
         price = re.search(r'\$[0-9]+\.\d{2}', text)
+
         channel = ""
         if is_hot_buy:
             warehouse = 'warehouse' in text.lower()
@@ -181,6 +163,7 @@ def parse_coupon_data(text, source_url, is_hot_buy, known_brands):
                 channel = "In-Warehouse"
             elif online:
                 channel = "Online"
+
         discount_period = "March 29th through April 6th" if is_hot_buy else "April 9th through May 4th"
         row = {
             'scrape_datetime': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
@@ -203,10 +186,12 @@ def scrape_images_from_page(url, is_hot_buy=False):
     html = get_page(url)
     if not html:
         return []
+
     brand_file = 'hot_buy_brands.txt' if is_hot_buy else 'coupon_book_brands.txt'
     known_brands = load_known_brands(brand_file)
     soup = BeautifulSoup(html, 'html.parser')
     items = []
+
     if not is_hot_buy:
         coupon_container = soup.select_one('#coupon-book')
         images = coupon_container.select('img') if coupon_container else []
@@ -218,9 +203,10 @@ def scrape_images_from_page(url, is_hot_buy=False):
             images = soup.select(selector)
             if images:
                 break
-        else:
+        if not images:
             images = soup.select('img')
         print(f"📦 Found {len(images)} hot buy images")
+
     for img_tag in images:
         img_url = img_tag.get('src')
         if not img_url.startswith('http'):
@@ -235,6 +221,7 @@ def scrape_images_from_page(url, is_hot_buy=False):
         parsed = parse_coupon_data(text, img_url, is_hot_buy, known_brands)
         if isinstance(parsed, list):
             items.extend(parsed)
+
     if is_hot_buy:
         next_page = soup.find('a', string=re.compile(r'next|›|>', re.IGNORECASE))
         if next_page and next_page.get('href'):
@@ -244,54 +231,26 @@ def scrape_images_from_page(url, is_hot_buy=False):
     return items
 
 def loop_back_years(years_back=2):
+    all_results = []
     current_year = datetime.now().year
     for y in range(current_year - years_back, current_year + 1):
         for month in ['april', 'march', 'february', 'january']:
             print(f"\n📅 Scraping for {month.title()} {y}...")
             coupon_url = f"https://www.costcoinsider.com/costco-{month}-{y}-coupon-book/"
             hotbuy_url = f"https://www.costcoinsider.com/costco-{month}-{y}-hot-buys-coupons/"
-            
+
             coupons = scrape_images_from_page(coupon_url, is_hot_buy=False)
             hotbuys = scrape_images_from_page(hotbuy_url, is_hot_buy=True)
 
-            if coupons:
-                save_to_excel(coupons, f"{y}_{month}_Coupon_Book.xlsx")
-            if hotbuys:
-                save_to_excel(hotbuys, f"{y}_{month}_Hot_Buys.xlsx")
+            all_results.extend(coupons)
+            all_results.extend(hotbuys)
 
-def save_to_excel(data, filename):
-    if not data:
-        print(f"⚠️ No data to save for {filename}")
-        return
-    df = pd.DataFrame(data)
-    columns = [
-        'scrape_datetime', 'article_name', 'publish_date', 'item_brand',
-        'item_description', 'discount', 'discount_cleaned', 'count_limit',
-        'channel', 'discount_period', 'item_original_price', 'source_url'
-    ]
-    df = df[columns]
-    df.to_excel(filename, index=False)
-    print(f"💾 Saved {len(df)} records to {filename}")
+    return all_results
 
-# def main():
-#     if not initialize():
-#         return
-#     loop_back_years(2)
-
-# if __name__ == "__main__":
-#     main()
-def main():
-    if not initialize():
-        return
-    print("📘 Scraping Coupon Book...")
-    coupon_url = "https://www.costcoinsider.com/costco-april-2025-coupon-book/"
-    coupons = scrape_images_from_page(coupon_url, is_hot_buy=False)
-    save_to_excel(coupons, "2025-04-28_Coupon_Books.xlsx")
-    print("🔥 Scraping Hot Buys...")
-    hot_buys_url = "https://www.costcoinsider.com/costco-april-2025-hot-buys-coupons/"
-    hotbuys = scrape_images_from_page(hot_buys_url, is_hot_buy=True)
-    save_to_excel(hotbuys, "2025-04-28_Hot_Buys_Coupons.xlsx")
-    print("🎉 Done! Check the Excel files.")
-
+# === USAGE EXAMPLE ===
 if __name__ == "__main__":
-    main()
+    if initialize():
+        data = loop_back_years(years_back=2)
+        df = pd.DataFrame(data)
+        df.to_excel("costco_coupons_historical.xlsx", index=False)
+        print(f"\n✅ Saved {len(df)} rows to costco_coupons_historical.xlsx")
